@@ -1,28 +1,61 @@
-// index.js (Panel main entry)
-// This file is required by the panel.
-// It delegates everything to start.sh and keeps the process in foreground.
+// index.js - Zampto/Pterodactyl main entry (auto deploy from GitHub on start)
+const { spawnSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
 
-const { spawn } = require("child_process");
+function run(cmd, args, opts = {}) {
+  const r = spawnSync(cmd, args, { stdio: "inherit", ...opts });
+  if (r.error) throw r.error;
+  if (typeof r.status === "number" && r.status !== 0) {
+    throw new Error(`Command failed: ${cmd} ${args.join(" ")} (exit ${r.status})`);
+  }
+}
+
+function hasGit(dir) {
+  return fs.existsSync(path.join(dir, ".git"));
+}
 
 function main() {
-  // Prefer bash. If bash not available, fallback to sh.
-  const tryBash = spawn("bash", ["./start.sh"], { stdio: "inherit" });
+  const repo = process.env.GIT_REPO;
+  if (!repo) {
+    console.error("[deploy] Missing env GIT_REPO (e.g. https://github.com/user/repo.git)");
+    process.exit(1);
+  }
 
-  tryBash.on("error", (err) => {
-    console.error("[index] bash failed:", err?.message || err);
-    console.error("[index] fallback to sh ./start.sh ...");
+  const branch = process.env.GIT_BRANCH || "main";
+  const appDir = path.resolve(process.env.APP_DIR || "app");
 
-    const trySh = spawn("sh", ["./start.sh"], { stdio: "inherit" });
-    trySh.on("exit", (code) => process.exit(code ?? 1));
-  });
+  // Build authenticated URL if token provided (for private repos).
+  // Note: token in URL may appear in logs depending on git output; keep repo public if possible.
+  let repoUrl = repo;
+  const token = process.env.GIT_TOKEN;
+  if (token && repo.startsWith("https://")) {
+    repoUrl = repo.replace("https://", `https://${token}@`);
+  }
 
-  tryBash.on("exit", (code) => {
-    process.exit(code ?? 1);
-  });
+  if (!fs.existsSync(appDir)) fs.mkdirSync(appDir, { recursive: true });
+
+  if (!hasGit(appDir)) {
+    console.log(`[deploy] Cloning ${repo} (${branch}) -> ${appDir}`);
+    // clone into empty dir: use parent then move, easiest is clone directly if dir empty
+    // If dir not empty, you should clear it yourself.
+    run("git", ["clone", "--depth", "1", "--branch", branch, repoUrl, appDir], { cwd: path.dirname(appDir) });
+  } else {
+    console.log(`[deploy] Updating repo in ${appDir}`);
+    run("git", ["fetch", "--all", "--prune"], { cwd: appDir });
+    run("git", ["reset", "--hard", `origin/${branch}`], { cwd: appDir });
+  }
+
+  console.log("[deploy] Running start.sh...");
+  // Ensure executable; ignore errors if chmod not available.
+  try { run("chmod", ["+x", "start.sh"], { cwd: appDir }); } catch {}
+  // Run with bash first; fallback to sh.
+  let r = spawnSync("bash", ["./start.sh"], { stdio: "inherit", cwd: appDir });
+  if (r.error) {
+    console.log("[deploy] bash not available, fallback to sh");
+    r = spawnSync("sh", ["./start.sh"], { stdio: "inherit", cwd: appDir });
+  }
+  process.exit(r.status ?? 1);
 }
 
-main();  process.exit(1);
-} catch (e) {
-  console.error("[BOOT] 启动失败，退出码：", e.status ?? "unknown");
-  process.exit(e.status ?? 1);
-}
+main();
