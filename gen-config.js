@@ -1,40 +1,140 @@
-#!/usr/bin/env node
+// gen-config.js (CommonJS)
+// Generates a minimal sing-box config (Reality TCP only) for stability on Pterodactyl/Zampto.
+
 const fs = require("fs");
 const path = require("path");
 
-function pickFirstEnv(names) {
-  for (const n of names) {
-    const v = process.env[n];
-    if (v && String(v).trim()) return String(v).trim();
+function mustGetEnv(name) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing required env: ${name}`);
+  return v;
+}
+
+function getEnv(name, def) {
+  const v = process.env[name];
+  return (v === undefined || v === "") ? def : v;
+}
+
+function isValidPort(p) {
+  const n = Number(p);
+  return Number.isInteger(n) && n >= 1 && n <= 65535;
+}
+
+function main() {
+  const pwd = process.cwd();
+
+  // start.sh exports FILE_PATH and DATA_PATH; fallback for safety.
+  const FILE_PATH = getEnv("FILE_PATH", path.join(pwd, ".npm"));
+  const DATA_PATH = getEnv("DATA_PATH", path.join(pwd, "singbox_data"));
+
+  fs.mkdirSync(FILE_PATH, { recursive: true });
+  fs.mkdirSync(DATA_PATH, { recursive: true });
+
+  const UUID = mustGetEnv("UUID");
+  const private_key = mustGetEnv("private_key");
+  const public_key = mustGetEnv("public_key");
+
+  // Ports: prefer panel-provided env vars; else defaults.
+  const REALITY_PORT = getEnv("REALITY_PORT", "40735");
+  if (!isValidPort(REALITY_PORT)) throw new Error(`Invalid REALITY_PORT: ${REALITY_PORT}`);
+
+  // Host for share link output (domain or public IP). Optional but recommended.
+  const SERVER_HOST = getEnv("SERVER_HOST", "");
+
+  // Reality needs "server_name" and "short_id".
+  // Use a common SNI; user can override via env if they want.
+  const SERVER_NAME = getEnv("REALITY_SERVER_NAME", "www.bing.com");
+
+  // short_id must be 8 bytes hex (16 hex chars) typically; we generate stable-ish one from UUID if missing.
+  let SHORT_ID = getEnv("REALITY_SHORT_ID", "");
+  if (!/^[0-9a-fA-F]{16}$/.test(SHORT_ID)) {
+    // derive 16 hex chars from uuid (remove dashes, take first 16)
+    SHORT_ID = UUID.replace(/-/g, "").slice(0, 16).toLowerCase();
   }
-  return "";
-}
 
-function parsePort(v) {
-  const n = Number(String(v).trim());
-  if (Number.isInteger(n) && n > 0 && n < 65536) return n;
-  return null;
-}
-
-function collectPortCandidates() {
-  // 常见面板/应用端口变量名（尽量多兜底）
-  const keys = [
-    "TUIC_PORT", "HY2_PORT", "REALITY_PORT",
-    "SERVER_PORT", "PORT", "APP_PORT",
-    "PORT0", "PORT1", "PORT2", "PORT3",
-    "SERVER_PORT_0", "SERVER_PORT_1", "SERVER_PORT_2", "SERVER_PORT_3",
-    "P_SERVER_PORT", "P_SERVER_PRIMARY_PORT",
-  ];
-
-  const out = [];
-  for (const k of keys) {
-    if (process.env[k]) {
-      const p = parsePort(process.env[k]);
-      if (p) out.push(p);
+  // sing-box config (Reality inbound + a simple direct outbound)
+  const config = {
+    log: {
+      level: getEnv("LOG_LEVEL", "info"),
+      timestamp: true
+    },
+    inbounds: [
+      {
+        type: "vless",
+        tag: "in-reality-vless",
+        listen: "::",
+        listen_port: Number(REALITY_PORT),
+        users: [
+          { uuid: UUID, flow: "xtls-rprx-vision" }
+        ],
+        tls: {
+          enabled: true,
+          server_name: SERVER_NAME,
+          reality: {
+            enabled: true,
+            handshake: {
+              server: SERVER_NAME,
+              server_port: 443
+            },
+            private_key: private_key,
+            short_id: [SHORT_ID]
+          }
+        }
+      }
+    ],
+    outbounds: [
+      { type: "direct", tag: "direct" },
+      { type: "block", tag: "block" }
+    ],
+    route: {
+      rules: [
+        { protocol: "dns", outbound: "direct" }
+      ],
+      final: "direct"
     }
+  };
+
+  const configPath = path.join(FILE_PATH, "config.json");
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+
+  // Share info (not a full client profile; just essentials)
+  const lines = [];
+  lines.push("=== Sing-box Reality (VLESS) Info ===");
+  lines.push(`UUID: ${UUID}`);
+  lines.push(`PublicKey: ${public_key}`);
+  lines.push(`ServerName(SNI): ${SERVER_NAME}`);
+  lines.push(`ShortID: ${SHORT_ID}`);
+  lines.push(`RealityPort: ${REALITY_PORT}`);
+  if (SERVER_HOST) {
+    lines.push(`ServerHost: ${SERVER_HOST}`);
+    // A helpful vless reality URI (basic form)
+    const uri =
+      `vless://${UUID}@${SERVER_HOST}:${REALITY_PORT}` +
+      `?encryption=none&security=reality&sni=${encodeURIComponent(SERVER_NAME)}` +
+      `&fp=chrome&pbk=${encodeURIComponent(public_key)}` +
+      `&sid=${encodeURIComponent(SHORT_ID)}` +
+      `&type=tcp&flow=xtls-rprx-vision` +
+      `#singbox-reality`;
+    lines.push("");
+    lines.push("URI:");
+    lines.push(uri);
+  } else {
+    lines.push("WARN: SERVER_HOST not set, URI not generated.");
   }
 
-  // 去重但保持顺序
+  const sharePath = path.join(FILE_PATH, "share_links.txt");
+  fs.writeFileSync(sharePath, lines.join("\n") + "\n", "utf8");
+
+  console.log(`[gen-config] Wrote config: ${configPath}`);
+  console.log(`[gen-config] Wrote share:  ${sharePath}`);
+}
+
+try {
+  main();
+} catch (e) {
+  console.error(`[gen-config] ERROR: ${e && e.message ? e.message : e}`);
+  process.exit(1);
+       }  // 去重但保持顺序
   return [...new Set(out)];
 }
 
