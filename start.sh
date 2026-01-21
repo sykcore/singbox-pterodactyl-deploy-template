@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -6,9 +6,12 @@ export FILE_PATH="${PWD}/.npm"
 export DATA_PATH="${PWD}/singbox_data"
 mkdir -p "$FILE_PATH" "$DATA_PATH"
 
+echo "[启动] 当前工作目录 = ${PWD}"
+echo "[启动] 节点 = $(node -v 2>/dev/null || true)"
+
 # ------------------ 固定 UUID ------------------
 UUID_FILE="${FILE_PATH}/uuid.txt"
-if [ -f "$UUID_FILE" ]; then
+if [[ -f "$UUID_FILE" ]]; then
   export UUID="$(cat "$UUID_FILE")"
   echo "[UUID] 复用固定 UUID: $UUID"
 else
@@ -35,6 +38,52 @@ fi
 download_file() {
   local url="$1"
   local out="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -L -sS -o "$out" "$url"
+    echo "[下载] $out (curl)"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$out" "$url"
+    echo "[下载] $out (wget)"
+  else
+    echo "未找到 curl 或 wget"
+    exit 1
+  fi
+}
+
+SB_REAL="${FILE_PATH}/$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)"
+download_file "${BASE_URL}/sb" "$SB_REAL"
+chmod +x "$SB_REAL"
+ln -sf "$SB_REAL" "${FILE_PATH}/sing-box"
+export SB_BIN="${FILE_PATH}/sing-box"
+echo "[OK] sing-box 已准备: $SB_BIN"
+
+# ------------------ Reality 密钥固定保存 ------------------
+KEY_FILE="${FILE_PATH}/key.txt"
+if [[ -f "$KEY_FILE" ]]; then
+  echo "[密钥] 检测到已有密钥，复用..."
+  export private_key="$(awk '/PrivateKey:/ {print $2}' "$KEY_FILE" | head -n1)"
+  export public_key="$(awk '/PublicKey:/ {print $2}' "$KEY_FILE" | head -n1)"
+else
+  echo "[密钥] 首次生成 Reality 密钥对..."
+  output="$("$SB_BIN" generate reality-keypair)"
+  printf "%s\n" "$output" > "$KEY_FILE"
+  chmod 600 "$KEY_FILE" 2>/dev/null || true
+  export private_key="$(printf "%s\n" "$output" | awk '/PrivateKey:/ {print $2}' | head -n1)"
+  export public_key="$(printf "%s\n" "$output" | awk '/PublicKey:/ {print $2}' | head -n1)"
+  echo "[密钥] 密钥已保存，重启后保持不变"
+fi
+
+# ------------------ 生成 config.json / share_links.txt ------------------
+node ./gen-config.js
+
+echo "[INFO] 节点信息已写入: ${FILE_PATH}/share_links.txt"
+echo "------------------------------------------------------------"
+
+# ------------------ 启动（前台常驻） ------------------
+# 可选：更详细日志，用于排错
+# exec "$SB_BIN" run -c "${FILE_PATH}/config.json" -D
+
+exec "$SB_BIN" run -c "${FILE_PATH}/config.json"  local out="$2"
   if command -v curl >/dev/null 2>&1; then
     curl -L -sS -o "$out" "$url"
     echo "[下载] $out (curl)"
