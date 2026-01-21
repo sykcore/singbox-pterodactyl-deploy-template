@@ -57,7 +57,7 @@ node /home/index.js
 ## 🚀 部署方式（推荐）
 
 ### 方式 A：直接上传仓库文件
-1. 把本仓库 4 个文件上传到面板服务器的 `/home/container/` 根目录
+1. 把本仓库 4 个文件上传到面板服务器的 `/home/` 根目录
 2. 确保根目录存在：
    - `index.js`
    - `package.json`
@@ -74,8 +74,8 @@ node /home/index.js
 如果面板允许设置启动命令，建议用：
 
 ```bash
-node /home/container/index.js
-如果面板不允许修改启动命令，只要最终能运行 /home/container/index.js 即可。
+node /home/index.js
+如果面板不允许修改启动命令，只要最终能运行 /home/index.js 即可。
 
 ⚙️ 环境变量（可选，强烈建议设置）
 
@@ -128,7 +128,7 @@ Reality PublicKey
 
 同时会生成文件：
 
-/home/container/.npm/share_links.txt
+/home/.npm/share_links.txt
 
 
 你可以从文件面板直接打开复制。
@@ -167,12 +167,12 @@ HY2_PORT/UDP
 不会。
 UUID 固定保存于：
 
-/home/container/.npm/uuid.txt
+/home/.npm/uuid.txt
 
 
 Reality 密钥保存于：
 
-/home/container/.npm/key.txt
+/home/.npm/key.txt
 
 3）迁移到新面板只要改什么？
 
