@@ -1,40 +1,27 @@
-#!/usr/bin/env node
-const fs = require("fs");
-const { execSync } = require("child_process");
+// index.js (Panel main entry)
+// This file is required by the panel.
+// It delegates everything to start.sh and keeps the process in foreground.
 
-function run(cmd) {
-  console.log(`[BOOT] ${cmd}`);
-  execSync(cmd, { stdio: "inherit" });
+const { spawn } = require("child_process");
+
+function main() {
+  // Prefer bash. If bash not available, fallback to sh.
+  const tryBash = spawn("bash", ["./start.sh"], { stdio: "inherit" });
+
+  tryBash.on("error", (err) => {
+    console.error("[index] bash failed:", err?.message || err);
+    console.error("[index] fallback to sh ./start.sh ...");
+
+    const trySh = spawn("sh", ["./start.sh"], { stdio: "inherit" });
+    trySh.on("exit", (code) => process.exit(code ?? 1));
+  });
+
+  tryBash.on("exit", (code) => {
+    process.exit(code ?? 1);
+  });
 }
 
-try {
-  console.log("[BOOT] cwd =", process.cwd());
-  console.log("[BOOT] node =", process.version);
-
-  // 优先跑 start.sh（适合你这种 singbox 脚本项目）
-  if (fs.existsSync("./start.sh")) {
-    run("bash ./start.sh");
-    process.exit(0);
-  }
-
-  // 备用：编译产物 dist
-  if (fs.existsSync("./dist/index.js")) {
-    run("node ./dist/index.js");
-    process.exit(0);
-  }
-
-  // 备用：源码 src
-  if (fs.existsSync("./src/index.js")) {
-    run("node ./src/index.js");
-    process.exit(0);
-  }
-
-  console.error("[BOOT] 未找到可启动入口文件：");
-  console.error("  - ./start.sh");
-  console.error("  - ./dist/index.js");
-  console.error("  - ./src/index.js");
-  console.error("请检查是否上传完整项目到 /home/container 根目录");
-  process.exit(1);
+main();  process.exit(1);
 } catch (e) {
   console.error("[BOOT] 启动失败，退出码：", e.status ?? "unknown");
   process.exit(e.status ?? 1);
