@@ -1,0 +1,28 @@
+开始
+
+重启
+
+停止
+
+[18:22:10] [成功] 已成功连接到服务器控制台
+[18:22:10] [信息] 服务器状态：离线
+[18:22:29] [信息] 服务器状态：正在启动
+[18:22:29] [成功] ✓ 已发送服务器启动命令
+v24.13.0
+[18:22:32] [信息] 服务器状态：运行中
+:/home/container$ 如果 [[ -d .git ]] && [[ ${AUTO_UPDATE} == "1" ]]; 则 git pull; fi; 如果 [[ ! -z ${NODE_PACKAGES} ]]; 则 /usr/local/bin/npm install ; fi; 如果 [[ ! -z ${UNNODE_PACKAGES} ]]; 则 /usr/local/bin/npm uninstall ; fi; 如果 [ -f /home/container/package.json ]; 则 /usr/local/bin/npm install; fi; 如果 [[ "${MAIN_FILE}" == "*.js" ]]; 则 /usr/local/bin/node "/home/container/index.js" ; 否则 /usr/local/bin/ts-node --esm "/home/container/index.js" ; fi
+（使用 `node --trace-deprecation ...` 可以显示警告信息出现的位置）
+/home/container/index.js:185
+*/
+  ^
+语法错误：无效的正则表达式：缺少 /
+    在 wrapSafe (node:internal/modules/cjs/loader:1692:18)
+    在 Module._compile (node:internal/modules/cjs/loader:1735:20)
+    在 node:internal/modules/cjs/loader:1893:10
+    在 Object.require.extensions。[as .js] (/usr/local/lib/node_modules/ts-node/src/index.ts:1608:43)
+    在 Module.load (node:internal/modules/cjs/loader:1481:32)
+    在 Module._load (node:internal/modules/cjs/loader:1300:12)
+    在 TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    在 wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    在 loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:339:3)
+    在 ModuleWrap 上。（node:internal/modules/esm/translators:242:7）
